@@ -1,15 +1,37 @@
 <?php
 
 return [
-    /**
-     * Configure the Aes encryption
-     *
-     * - key (string) - They key used to encrypt and decrypt your data
-     *
-     * - mode (string) - encryptiong method starts with aes-{keylen: 128,192,256}-{mode:  ECB, CBC, CFB1, CFB8, CFB128, OFB}
-     *                   For example: aes-256-cbc or aes-128-ecb, we recommand using: aes-256-cbc
-     *
-     */
-    'key' => env('APP_AESENCRYPT_KEY','YourEncryptedKey'),
-    'mode' => env('APP_AESENCRYPT_MODE','aes-256-cbc'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Encryption Key
+    |--------------------------------------------------------------------------
+    | The secret key used by MySQL AES_ENCRYPT/AES_DECRYPT.
+    | Recommended: set via env MYSQL_AES_KEY in your Laravel app.
+    */
+    'key' => env('MYSQL_AES_KEY'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Use AES IV (MySQL only)
+    |--------------------------------------------------------------------------
+    | If true:
+    |   AES_ENCRYPT(str, key, iv) + ".iv."+iv will be used
+    | If false:
+    |   AES_ENCRYPT(str, key) only (MariaDB compatible)
+    */
+    'use_iv' => env('MYSQL_AES_USE_IV', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | MySQL block encryption mode
+    |--------------------------------------------------------------------------
+    | Example values:
+    | - aes-256-cbc
+    | - aes-128-cbc
+    | Depends on your MySQL server configuration/support.
+    |
+    | If null/empty, the package will NOT set block_encryption_mode.
+    */
+    'mode' => env('MYSQL_AES_MODE', null),
 ];
