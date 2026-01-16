@@ -2,366 +2,270 @@
 
 namespace mrzainulabideen\AESEncrypt\Database\Query\Grammars;
 
-use Illuminate\Support\Str;
 use Illuminate\Database\Query\Builder;
-use Illuminate\Database\Query\JsonExpression;
-use mrzainulabideen\AESEncrypt\Database\GrammarEncrypt;
-use InvalidArgumentException;
+use Illuminate\Database\Query\Grammars\MySqlGrammar;
+use Illuminate\Database\Query\JoinLateralClause;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
+use mrzainulabideen\AESEncrypt\Database\Query\BuilderEncrypt;
+use Illuminate\Support\Str;
 
-class MySqlGrammarEncrypt extends GrammarEncrypt
+class MySqlGrammarEncrypt extends MySqlGrammar
 {
-
-    protected $AESENCRYPT_KEY;
-    protected $AESENCRYPT_MODE;
-
-    public function __construct()
-    {
-        $this->AESENCRYPT_KEY = config('aesEncrypt.key');
-        $this->AESENCRYPT_MODE = config('aesEncrypt.mode');
-
-        if(empty($this->AESENCRYPT_KEY))
-            throw new InvalidArgumentException("Set encryption key in .env file, use this alias APP_AESENCRYPT_KEY");
-
-        if(empty($this->AESENCRYPT_MODE))
-            throw new InvalidArgumentException("Set encryption mode in .env file, use this alias APP_AESENCRYPT_MODE, we recommend using the default: aes-256-cbc");
-    }
-
     protected $columnsEncrypt = [];
+    protected ?Builder $currentQuery = null;
 
+    /* ------------------------------------------------------------
+     | Helpers
+     |------------------------------------------------------------ */
 
-    /**
-     * The components that make up a select clause.
-     *
-     * @var array
-     */
-    protected $selectComponents = [
-        'aggregate',
-        'columns',
-        'from',
-        'joins',
-        'wheres',
-        'groups',
-        'havings',
-        'orders',
-        'limit',
-        'offset',
-        'lock',
-    ];
-
-    /**
-     * Compile a select query into SQL.
-     *
-     * @param  \Illuminate\Database\Query\Builder  $query
-     * @return string
-     */
-    public function compileSelect(Builder $query)
+    protected function isEncryptedColumn(Builder $query, string $column): bool
     {
-        $this->columnsEncrypt = [];
-
-        if($query instanceof \mrzainulabideen\AESEncrypt\Database\Query\BuilderEncrypt) {
-            $instance = "BuilderEncrypt";
-            $this->columnsEncrypt = $query->getfillableEncrypt();
+        if (!$query instanceof BuilderEncrypt) {
+            return false;
         }
 
-        $sql = parent::compileSelect($query);
+        return $query->isEncryptableColumn($column);
+    }
 
-        if ($query->unions) {
-            $sql = '('.$sql.') '.$this->compileUnions($query);
-        }
-
-        return $sql;
+    protected function isEncryptableBuilder(Builder $query): bool
+    {
+        return $query instanceof BuilderEncrypt;
     }
 
     /**
-     * Compile a single union statement.
+     * Convert given column name to the unqualified name.
+     * ex. users.name -> name
+     * ex. users.Name -> name
      *
-     * @param  array  $union
+     * @param string $column
+     *
      * @return string
      */
-    protected function compileUnion(array $union)
+    protected function toUnqualifiedColumn(string $column): string
     {
-        $conjuction = $union['all'] ? ' union all ' : ' union ';
+        return Str::lower(Arr::last(explode('.', $column)));
+    }
 
-        return $conjuction.'('.$union['query']->toSql().')';
+    protected function decryptColumn(string $column): string
+    {
+        return EncryptExpressions::decrypt($column);
     }
 
     /**
-     * Compile the random statement into SQL.
+     * Compile an insert statement into SQL.
      *
-     * @param  string  $seed
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $values
+     *
      * @return string
      */
-    public function compileRandom($seed)
+    public function compileInsert(Builder $query, array $values)
     {
-        return 'RAND('.$seed.')';
-    }
-
-    /**
-     * Compile the lock into SQL.
-     *
-     * @param  \Illuminate\Database\Query\Builder  $query
-     * @param  bool|string  $value
-     * @return string
-     */
-    protected function compileLock(Builder $query, $value)
-    {
-        if (! is_string($value)) {
-            return $value ? 'for update' : 'lock in share mode';
+        if (empty($values) || !$this->isEncryptableBuilder($query)) {
+            return parent::compileInsert($query, $values);
         }
 
-        return $value;
-    }
+        /** @var BuilderEncrypt $query */
+        $encryptedColumns = $query->getEncryptable();
 
-    /**
-     * Compile an update statement into SQL.
-     *
-     * @param  \Illuminate\Database\Query\Builder  $query
-     * @param  array  $values
-     * @return string
-     */
-    public function compileUpdate(Builder $query, $values)
-    {
-        $this->columnsEncrypt = [];
-        if($query instanceof \mrzainulabideen\AESEncrypt\Database\Query\BuilderEncrypt) {
-            $instance = "BuilderEncrypt";
-            $this->columnsEncrypt = $query->getfillableEncrypt();
-        }
-
+        // Essentially we will force every insert to be treated as a batch insert which
+        // simply makes creating the SQL easier for us since we can utilize the same
+        // basic routine regardless of an amount of records given to us to insert.
         $table = $this->wrapTable($query->from);
 
-        // Each one of the columns in the update statements needs to be wrapped in the
-        // keyword identifiers, also a place-holder needs to be created for each of
-        // the values in the list of bindings so we can make the sets statements.
-        $columns = $this->compileUpdateColumns($values, $this->columnsEncrypt);
+//        if (empty($values)) {
+//            return "insert into {$table} default values";
+//        }
 
-        // If the query has any "join" clauses, we will setup the joins on the builder
-        // and compile them so we can attach them to this update, as update queries
-        // can get join statements to attach to other tables when they're needed.
-        $joins = '';
-
-        if (isset($query->joins)) {
-            $joins = ' '.$this->compileJoins($query, $query->joins);
+        if (!is_array(reset($values))) {
+            $values = [$values];
         }
 
-        // Of course, update queries may also be constrained by where clauses so we'll
-        // need to compile the where clauses and attach it to the query so only the
-        // intended records are updated by the SQL statements we generate to run.
-        $where = $this->compileWheres($query);
+        //should not encrpyt/decrypt insert column names
+        $columns = $this->columnize(array_keys(reset($values)));
 
-        $sql = rtrim("update {$table}{$joins} set $columns $where");
+        // We need to build a list of parameter place-holders of values that are bound
+        // to the query. Each insert should have the exact same number of parameter
+        // bindings so we will loop through the record and parameterize them all.
+        $parameters = (new Collection($values))->map(function ($record) use ($encryptedColumns) {
+            return '(' . $this->parameterize($record, $encryptedColumns) . ')';
+        })->implode(', ');
 
-        // If the query has an order by clause we will compile it since MySQL supports
-        // order bys on update statements. We'll compile them using the typical way
-        // of compiling order bys. Then they will be appended to the SQL queries.
-        if (! empty($query->orders)) {
-            $sql .= ' '.$this->compileOrders($query, $query->orders);
-        }
-
-        // Updates on MySQL also supports "limits", which allow you to easily update a
-        // single record very easily. This is not supported by all database engines
-        // so we have customized this update compiler here in order to add it in.
-        if (isset($query->limit)) {
-            $sql .= ' '.$this->compileLimit($query, $query->limit);
-        }
-
-        return rtrim($sql);
+        return "insert into $table ($columns) values $parameters";
     }
 
     /**
-     * Compile all of the columns for an update statement.
+     * Convert an array of column names into a delimited string.
      *
-     * @param  array  $values
+     * @param array $columns
+     *
      * @return string
      */
-    protected function compileUpdateColumns($values, $columnsEncrypt = [])
+    public function columnize(array $columns, array $encryptable = [])
     {
-        return collect($values)->map(function ($value, $key) use($columnsEncrypt) {
-            if ($this->isJsonSelector($key)) {
-                return $this->compileJsonUpdateColumn($key, new JsonExpression($value));
-            } else {
-                $valueParameter = $this->parameter($value);
-                if($key && in_array($key, $columnsEncrypt))
-                    $valueParameter = $this->wrapValueEncrypt($valueParameter);
-                return $this->wrap($key).' = '.$valueParameter;
+        $columnizeColumns = [];
+
+        $columns = $this->addColumnsToWildcard($columns, $encryptable);
+
+
+        foreach ($columns as $column) {
+//            dump($column);
+            $unqualifiedColumnName = $this->toUnqualifiedColumn($column);
+            $wrappedColumn = $this->wrap($column, $encryptable);
+//            dump($wrappedColumn);
+
+            if (true
+                && in_array($unqualifiedColumnName, $encryptable)
+                && strpos(strtolower($wrappedColumn), ' as ') === false
+                && strpos(strtolower($wrappedColumn), '*') === false) {
+                preg_match_all("/\`.*?\`/", $wrappedColumn, $alias);
+                $wrappedColumn = $wrappedColumn . ' as ' . Arr::last($alias[0]);
+//                dump($alias);
+//                dump(Arr::last($alias[0]));
+//                dd($wrappedColumn);
             }
+
+            $columnizeColumns[] = $wrappedColumn;
+        }
+
+//        dd($columnizeColumns);
+
+        return implode(', ', $columnizeColumns);
+    }
+
+    /**
+     * if columns only contain a wildcard we add the encrypted columns to decrypt
+     *
+     * @param array $columns
+     * @param array $columnsEncrypt
+     *
+     * @return array
+     */
+    public function addColumnsToWildcard(array $columns, array $columnsEncrypt)
+    {
+        if (!empty($columns) && strpos(strtolower($columns[0]), '*') !== false) {
+            $columns = array_merge($columns, $columnsEncrypt);
+        }
+        return $columns;
+    }
+
+    /**
+     * Create query parameter place-holders for an array.
+     *
+     * @param array $values
+     *
+     * @return string
+     */
+    public function parameterize(array $values, array $encryptable = [])
+    {
+        return (new Collection($values))->map(function ($columnValue, $columnName) use ($encryptable) {
+            $parameter = $this->parameter($columnName);
+            if (!empty($encryptable) && in_array($columnName, $encryptable, true)) {
+                $parameter = EncryptExpressions::encrypt($parameter);
+            }
+            return $parameter;
         })->implode(', ');
     }
 
     /**
-     * Prepares a JSON column being updated using the JSON_SET function.
+     * Wrap a value in keyword identifiers.
      *
-     * @param  string  $key
-     * @param  \Illuminate\Database\Query\JsonExpression  $value
+     * @param \Illuminate\Contracts\Database\Query\Expression|string $value
+     *
      * @return string
      */
-    protected function compileJsonUpdateColumn($key, JsonExpression $value)
+    public function wrap($value, array $encryptable = [])
     {
-        $path = explode('->', $key);
-
-        $field = $this->wrapValue(array_shift($path));
-
-        $accessor = '"$.'.implode('.', $path).'"';
-
-        return "{$field} = json_set({$field}, {$accessor}, {$value->getValue()})";
-    }
-
-    /**
-     * Prepare the bindings for an update statement.
-     *
-     * Booleans, integers, and doubles are inserted into JSON updates as raw values.
-     *
-     * @param  array  $bindings
-     * @param  array  $values
-     * @return array
-     */
-    public function prepareBindingsForUpdate(array $bindings, array $values)
-    {
-        $values = collect($values)->reject(function ($value, $column) {
-            return $this->isJsonSelector($column) &&
-                in_array(gettype($value), ['boolean', 'integer', 'double']);
-        })->all();
-
-        return parent::prepareBindingsForUpdate($bindings, $values);
-    }
-
-    /**
-     * Compile a delete statement into SQL.
-     *
-     * @param  \Illuminate\Database\Query\Builder  $query
-     * @return string
-     */
-    public function compileDelete(Builder $query)
-    {
-        $table = $this->wrapTable($query->from);
-
-        $where = is_array($query->wheres) ? $this->compileWheres($query) : '';
-
-        return isset($query->joins)
-                    ? $this->compileDeleteWithJoins($query, $table, $where)
-                    : $this->compileDeleteWithoutJoins($query, $table, $where);
-    }
-
-    /**
-     * Compile a delete query that does not use joins.
-     *
-     * @param  \Illuminate\Database\Query\Builder  $query
-     * @param  string  $table
-     * @param  array  $where
-     * @return string
-     */
-    protected function compileDeleteWithoutJoins($query, $table, $where)
-    {
-        $sql = trim("delete from {$table} {$where}");
-
-        // When using MySQL, delete statements may contain order by statements and limits
-        // so we will compile both of those here. Once we have finished compiling this
-        // we will return the completed SQL statement so it will be executed for us.
-        if (! empty($query->orders)) {
-            $sql .= ' '.$this->compileOrders($query, $query->orders);
+        if (empty($encryptable)) {
+            return parent::wrap($value);
         }
 
-        if (isset($query->limit)) {
-            $sql .= ' '.$this->compileLimit($query, $query->limit);
+        if ($this->isExpression($value)) {
+            return $this->getValue($value);
         }
 
-        return $sql;
-    }
-
-    /**
-     * Compile a delete query that uses joins.
-     *
-     * @param  \Illuminate\Database\Query\Builder  $query
-     * @param  string  $table
-     * @param  array  $where
-     * @return string
-     */
-    protected function compileDeleteWithJoins($query, $table, $where)
-    {
-        $joins = ' '.$this->compileJoins($query, $query->joins);
-
-        $alias = strpos(strtolower($table), ' as ') !== false
-                ? explode(' as ', $table)[1] : $table;
-
-        return trim("delete {$alias} from {$table}{$joins} {$where}");
-    }
-
-    /**
-     * Wrap a single string in keyword identifiers.
-     *
-     * @param  string  $value
-     * @return string
-     */
-    protected function wrapValue($value, $encrypt = false)
-    {
-        if ($value === '*') {
-            return $value;
+        // If the value being wrapped has a column alias we will need to separate out
+        // the pieces so we can wrap each of the segments of the expression on its
+        // own, and then join these both back together using the "as" connector.
+        if (stripos($value, ' as ') !== false) {
+            return $this->wrapAliasedValue($value, $encryptable);
         }
 
         // If the given value is a JSON selector we will wrap it differently than a
         // traditional value. We will need to split this path and wrap each part
         // wrapped, etc. Otherwise, we will simply wrap the value as a string.
+        /* @todo Need encryption handling */
         if ($this->isJsonSelector($value)) {
             return $this->wrapJsonSelector($value);
         }
 
-        $value = '`'.str_replace('`', '``', $value).'`';
-        if($encrypt)
-            $value = $this->wrapValueDecrypt($value);
-
-        return $value;
+        return $this->wrapSegments(explode('.', $value), $encryptable);
     }
 
+
     /**
-     * Wrap a single string in keyword identifiers.
+     * Wrap a value that has an alias.
      *
-     * @param  string  $value
+     * @param string $value
+     *
      * @return string
      */
-    protected function wrapValueDecrypt($value)
+    protected function wrapAliasedValue($value, array $encryptable = [])
     {
-        return "AES_DECRYPT(SUBSTRING_INDEX({$value}, '.iv.', 1), @AESKEY, SUBSTRING_INDEX({$value}, '.iv.', -1))";
+        $segments = preg_split('/\s+as\s+/i', $value);
+
+        return $this->wrap($segments[0], $encryptable) . ' as ' . $this->wrapValue($segments[1]);
     }
 
     /**
-     * Wrap a single string in keyword identifiers.
+     * Split the given JSON selector into the field and the optional path and wrap them separately.
      *
-     * @param  string  $value
+     * @param string $column
+     *
+     * @return array
+     */
+    protected function wrapJsonFieldAndPath($column, array $encryptable = [])
+    {
+        $parts = explode('->', $column, 2);
+
+        $field = $this->wrap($parts[0], $encryptable);
+
+        $path = count($parts) > 1 ? ', ' . $this->wrapJsonPath($parts[1], '->') : '';
+
+        return [$field, $path];
+    }
+
+    /**
+     * Wrap the given value segments.
+     *
+     * @param array $segments
+     *
      * @return string
      */
-    protected function wrapValueEncrypt($value)
+    protected function wrapSegments($segments, array $encryptable = [])
     {
-        $iv = bin2hex(random_bytes(16));
-        return "CONCAT(AES_ENCRYPT({$value}, @AESKEY, '{$iv}'), '.iv.','{$iv}')";
+        $wrapped = (new Collection($segments))->map(function ($segment, $key) use ($segments) {
+            return $key == 0 && count($segments) > 1
+                ? $this->wrapTable($segment)
+                : $this->wrapValue($segment);
+        })->implode('.');
+
+        return in_array(strtolower(Arr::last($segments)), $encryptable, true)
+            ? $this->decryptColumn($wrapped, $encryptable)
+            : $wrapped;
     }
 
-    /**
-     * Wrap the given JSON selector.
-     *
-     * @param  string  $value
-     * @return string
-     */
-    protected function wrapJsonSelector($value)
+    protected function wrapValue($value, array $encryptable = [])
     {
-        $path = explode('->', $value);
+        if ($value === '*') {
+            return $value;
+        }
+        $wrapped = '`' . str_replace('`', '``', $value) . '`';
+        if (in_array($value, $encryptable)) {
+            return $this->decryptColumn($wrapped);
+        }
 
-        $field = $this->wrapValue(array_shift($path));
-
-        return sprintf('%s->\'$.%s\'', $field, collect($path)->map(function ($part) {
-            return '"'.$part.'"';
-        })->implode('.'));
+        return $wrapped;
     }
-
-    /**
-     * Determine if the given string is a JSON selector.
-     *
-     * @param  string  $value
-     * @return bool
-     */
-    protected function isJsonSelector($value)
-    {
-        return Str::contains($value, '->');
-    }
-
-
-
 }
