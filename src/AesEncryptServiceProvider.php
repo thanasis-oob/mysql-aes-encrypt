@@ -2,60 +2,57 @@
 
 namespace mrzainulabideen\AESEncrypt;
 
-use Illuminate\Database\DatabaseManager;
+use Illuminate\Database\Events\ConnectionEstablished;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
-use mrzainulabideen\AESEncrypt\Database\Connectors\ConnectionFactoryEncrypt;
-
+use mrzainulabideen\AESEncrypt\Database\Query\Grammars\MySqlGrammarEncrypt;
 
 class AesEncryptServiceProvider extends ServiceProvider
 {
-    /**
-     * Indicates if loading of the provider is deferred.
-     *
-     * @var bool
-     */
-    protected $defer = false;
-
-    /**
-     * Bootstrap the application services.
-     *
-     * @return void
-     */
-    public function boot()
+    public function boot(): void
     {
+        // Allow publishing the package config into the host app
         $this->publishes([
-            __DIR__.'/config/aesEncrypt.php' => config_path('aesEncrypt.php'),
+            __DIR__ . '/config/aesEncrypt.php' => config_path('aesEncrypt.php'),
         ], 'config');
+
+        /**
+         * MVP: When a DB connection is established:
+         * - Only for mysql connections
+         * - set session variables (mode + key)
+         * - replace the query grammar with our subclass
+         */
+        Event::listen(ConnectionEstablished::class, function (ConnectionEstablished $event) {
+            $connection = $event->connection;
+
+            if ($connection->getDriverName() !== 'mysql') {
+                return;
+            }
+
+            $aesMode = config('aesEncrypt.mode');
+            $key  = config('aesEncrypt.key');
+            $useIv = config('aesEncrypt.use_iv');
+            AesConfig::set($key, $aesMode, $useIv);
+
+            if (!empty($mode)) {
+                $connection->statement('SET @@SESSION.block_encryption_mode = ?', [$aesMode]);
+            }
+
+            if (!empty($key)) {
+                // store key in a session variable for use in SQL expressions later
+                $connection->statement('SET @AESKEY = ?', [$key]);
+            }
+
+            // Swap grammar (no behavior change yet, just proving hook works)
+            $connection->setQueryGrammar(new MySqlGrammarEncrypt());
+        });
     }
 
-    /**
-     * Register the application services.
-     *
-     * @return void
-     */
-    public function register()
+    public function register(): void
     {
         $this->mergeConfigFrom(
-            __DIR__.'/config/aesEncrypt.php',
+            __DIR__ . '/config/aesEncrypt.php',
             'aesEncrypt'
         );
-
-        // The connection factory is used to create the actual connection instances on
-        // the database. We will inject the factory into the manager so that it may
-        // make the connections while they are actually needed and not of before.
-        $this->app->singleton('db.factory', function ($app) {
-            return new ConnectionFactoryEncrypt($app);
-        });
-
-        // The database manager is used to resolve various connections, since multiple
-        // connections might be managed. It also implements the connection resolver
-        // interface which may be used by other components requiring connections.
-        $this->app->singleton('db', function ($app) {
-            return new DatabaseManager($app, $app['db.factory']);
-        });
-
-        $this->app->bind('db.connection', function ($app) {
-            return $app['db']->connection();
-        });
     }
 }
