@@ -2,6 +2,7 @@
 
 namespace mrzainulabideen\AESEncrypt\Database\Query\Grammars;
 
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\Grammars\MySqlGrammar;
 use Illuminate\Database\Query\JoinLateralClause;
@@ -96,9 +97,90 @@ class MySqlGrammarEncrypt extends MySqlGrammar
     }
 
     /**
+     * Compile a select query into SQL.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     *
+     * @return string
+     */
+    public function compileSelect(Builder $query)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::compileSelect($query);
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptedColumns = $query->getEncryptable();
+
+        if (($query->unions || $query->havings) && $query->aggregate) {
+            return $this->compileUnionAggregate($query);
+        }
+
+        // If a "group limit" is in place, we will need to compile the SQL to use a
+        // different syntax. This primarily supports limits on eager loads using
+        // Eloquent. We'll also set the columns if they have not been defined.
+        if (isset($query->groupLimit)) {
+            if (is_null($query->columns)) {
+                $query->columns = ['*'];
+            }
+
+            return $this->compileGroupLimit($query);
+        }
+
+        // If the query does not have any columns set, we'll set the columns to the
+        // * character to just get all of the columns from the database. Then we
+        // can build the query and concatenate all the pieces together as one.
+        $original = $query->columns;
+
+        if (is_null($query->columns)) {
+            $query->columns = ['*'];
+        }
+
+        // To compile the query, we'll spin through each component of the query and
+        // see if that component exists. If it does we'll just call the compiler
+        // function for the component which is responsible for making the SQL.
+        $sql = trim($this->concatenate(
+            $this->compileComponents($query))
+        );
+
+        if ($query->unions) {
+            $sql = $this->wrapUnion($sql) . ' ' . $this->compileUnions($query);
+        }
+
+        $query->columns = $original;
+
+//        dd($sql);
+        return $sql;
+    }
+
+    protected function compileColumns(Builder $query, $columns)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::compileColumns($query, $columns);
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptedColumns = $query->getEncryptable();
+
+        // If the query is actually performing an aggregating select, we will let that
+        // compiler handle the building of the select clauses, as it will need some
+        // more syntax that is best handled by that function to keep things neat.
+        if (!is_null($query->aggregate)) {
+            return;
+        }
+
+        if ($query->distinct) {
+            $select = 'select distinct ';
+        } else {
+            $select = 'select ';
+        }
+
+        return $select . $this->columnize($columns, $encryptedColumns);
+    }
+
+    /**
      * Convert an array of column names into a delimited string.
      *
      * @param array $columns
+     * @param array $encryptable
      *
      * @return string
      */
@@ -154,6 +236,7 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      * Create query parameter place-holders for an array.
      *
      * @param array $values
+     * @param array $encryptable
      *
      * @return string
      */
@@ -171,7 +254,8 @@ class MySqlGrammarEncrypt extends MySqlGrammar
     /**
      * Wrap a value in keyword identifiers.
      *
-     * @param \Illuminate\Contracts\Database\Query\Expression|string $value
+     * @param Expression|string $value
+     * @param array $encryptable
      *
      * @return string
      */
@@ -208,6 +292,7 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      * Wrap a value that has an alias.
      *
      * @param string $value
+     * @param array $encryptable
      *
      * @return string
      */
@@ -222,6 +307,7 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      * Split the given JSON selector into the field and the optional path and wrap them separately.
      *
      * @param string $column
+     * @param array $encryptable
      *
      * @return array
      */
@@ -239,7 +325,8 @@ class MySqlGrammarEncrypt extends MySqlGrammar
     /**
      * Wrap the given value segments.
      *
-     * @param array $segments
+     * @param $segments
+     * @param array $encryptable
      *
      * @return string
      */
@@ -256,6 +343,12 @@ class MySqlGrammarEncrypt extends MySqlGrammar
             : $wrapped;
     }
 
+    /**
+     * @param $value
+     * @param array $encryptable
+     *
+     * @return string
+     */
     protected function wrapValue($value, array $encryptable = [])
     {
         if ($value === '*') {
