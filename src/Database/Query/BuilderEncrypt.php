@@ -2,84 +2,50 @@
 
 namespace mrzainulabideen\AESEncrypt\Database\Query;
 
-use Illuminate\Database\Query\Builder as BuilderCore;
+use Illuminate\Database\Query\Builder as BaseBuilder;
 
-class BuilderEncrypt extends BuilderCore
+/**
+ * Query Builder that stores which columns should be encrypted/decrypted.
+ * The grammar will read this list from the Builder instance at compile time.
+ */
+class BuilderEncrypt extends BaseBuilder
 {
-
-    protected $fillableEncrypt = null;
-
-    protected $fillableColumns = null;
+    /**
+     * @var array<string>
+     */
+    protected array $encryptable = [];
 
     /**
-     * Execute the query as a "select" statement.
+     * Set encrypted columns for this builder.
      *
-     * @param  array  $columns
-     * @return \Illuminate\Support\Collection
+     * @param array<string> $columns
      */
-    public function get($columns = ['*'])
+    public function setEncryptable(array $columns): static
     {
-        if($columns = ['*'])
-            $columns = $this->fillableColumns;
-
-        $original = $this->columns;
-
-        if (is_null($original)) {
-            $this->columns = $columns;
-        }
-
-        $results = $this->processor->processSelect($this, $this->runSelect());
-
-        $this->columns = $original;
-
-        return collect($results);
-    }
-
-    /**
-     * Set a model instance for the model being queried.
-     *
-     * @param  string  $fillableEncrypt
-     * @return $this
-     */
-    public function setfillableEncrypt($fillableEncrypt)
-    {
-        $this->fillableEncrypt = $fillableEncrypt;
+        // normalize to plain column names (no table prefix)
+        $this->encryptable = array_values(array_unique(array_map(function ($c) {
+            return is_string($c) && str_contains($c, '.') ? last(explode('.', $c)) : (string) $c;
+        }, $columns)));
 
         return $this;
     }
 
     /**
-     * Set a model instance for the model being queried.
+     * Get encrypted columns for this builder.
      *
-     * @return string
+     * @return array<string>
      */
-    public function getfillableEncrypt()
+    public function getEncryptable(): array
     {
-        return !empty($this->fillableEncrypt) ? $this->fillableEncrypt : [];
+        return $this->encryptable;
     }
 
     /**
-     * Set a fillable columns
-     *
-     * @param \Illuminate\Support\Collection
-     * @return $this
+     * Convenience check.
      */
-    public function setfillableColumns($fillableColumns)
+    public function isEncryptableColumn(string $column): bool
     {
-        $this->fillableColumns = $fillableColumns;
-
-        return $this;
-    }
-
-    /**
-     * Return fillable columns
-     *
-     * @param \Illuminate\Support\Collection
-     */
-    public function getfillableColumns()
-    {
-        return !empty($this->fillableColumns) ? $this->fillableColumns : [];
+        $base = str_contains($column, '.') ? last(explode('.', $column)) : $column;
+        return in_array($base, $this->encryptable, true);
     }
 }
-
-
