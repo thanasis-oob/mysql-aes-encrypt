@@ -177,6 +177,37 @@ class MySqlGrammarEncrypt extends MySqlGrammar
     }
 
     /**
+     * Compile the columns for an update statement.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $values
+     *
+     * @return string
+     */
+    protected function compileUpdateColumns(Builder $query, array $values)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::compileUpdateColumns($query, $values);
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptedColumns = $query->getEncryptable();
+
+        return (new Collection($values))->map(function ($value, $columnName) use ($encryptedColumns) {
+            if ($this->isJsonSelector($columnName)) {
+                return $this->compileJsonUpdateColumn($columnName, $value, $encryptedColumns);
+            }
+
+            $unqualifiedColumnName = $this->toUnqualifiedColumn($columnName);
+            $parameter = $this->parameter($value);
+            if (!empty($encryptedColumns) && in_array($unqualifiedColumnName, $encryptedColumns, true)) {
+                $parameter = EncryptExpressions::encrypt($parameter);
+            }
+
+            return $this->wrap($columnName) . ' = ' . $parameter;
+        })->implode(', ');
+    }
+
+    /**
      * Convert an array of column names into a delimited string.
      *
      * @param array $columns
