@@ -17,15 +17,46 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      | Helpers
      |------------------------------------------------------------ */
 
-    protected function isEncryptedColumn(Builder $query, string $column): bool
+    /**
+     * @param $columnName
+     * @param array $encryptableColumns
+     *
+     * @return bool
+     */
+    public function isEncryptableColumn($columnName, array $encryptableColumns = []): bool
     {
-        if (!$query instanceof BuilderEncrypt) {
-            return false;
-        }
-
-        return $query->isEncryptableColumn($column);
+        $unqualifiedColumnName = $this->toUnqualifiedColumn($columnName);
+        return !empty($encryptableColumns) && in_array($unqualifiedColumnName, $encryptableColumns, true);
     }
 
+    /**
+     *
+     * @param $column
+     *
+     * @return bool
+     */
+    public function isAliasedColumn($column): bool
+    {
+        return stripos($column, ' as ') !== false;
+    }
+
+    /**
+     *
+     * @param $column
+     *
+     * @return bool
+     */
+    public function removeColumnAlias($column): string
+    {
+        $column = str_replace(' AS', ' as ', $column);
+        return Arr::first(explode(' as ', $column));
+    }
+
+    /**
+     * @param Builder $query
+     *
+     * @return bool
+     */
     protected function isEncryptableBuilder(Builder $query): bool
     {
         return $query instanceof BuilderEncrypt;
@@ -33,8 +64,11 @@ class MySqlGrammarEncrypt extends MySqlGrammar
 
     /**
      * Convert given column name to the unqualified name.
+     *
+     *  ex. name -> name
+     *  ex. NAME -> name
      * ex. users.name -> name
-     * ex. users.Name -> name
+     * ex. users.NAME -> name
      *
      * @param string $column
      *
@@ -42,6 +76,10 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      */
     protected function toUnqualifiedColumn(string $column): string
     {
+        //split alias
+        if($this->isAliasedColumn($column)) {
+            $column = $this->removeColumnAlias($column);
+        }
         return Str::lower(Arr::last(explode('.', $column)));
     }
 
@@ -202,6 +240,52 @@ class MySqlGrammarEncrypt extends MySqlGrammar
 
             return $this->wrap($columnName) . ' = ' . $parameter;
         })->implode(', ');
+    }
+
+    /**
+     * Compile an "upsert" statement into SQL.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $values
+     * @param array $uniqueBy
+     * @param array $update
+     *
+     * @return string
+     */
+    public function compileUpsert(Builder $query, array $values, array $uniqueBy, array $update)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        $useUpsertAlias = $query->connection->getConfig('use_upsert_alias');
+
+        $sql = $this->compileInsert($query, $values);
+
+        if ($useUpsertAlias) {
+            $sql .= ' as laravel_upsert_alias';
+        }
+
+        $sql .= ' on duplicate key update ';
+
+
+        $columns = (new Collection($update))->map(function ($value, $key) use ($useUpsertAlias, $encryptableColumns) {
+            if (!is_numeric($key)) {
+                $parameter = $this->parameter($value);
+                if ($this->isEncryptableColumn($key, $encryptableColumns)) {
+                    $parameter = EncryptExpressions::encrypt($parameter);
+                }
+                return $this->wrap($key) . ' = ' . $parameter;
+            }
+
+            return $useUpsertAlias
+                ? $this->wrap($value) . ' = ' . $this->wrap('laravel_upsert_alias') . '.' . $this->wrap($value)
+                : $this->wrap($value) . ' = values(' . $this->wrap($value) . ')';
+        })->implode(', ');
+
+        return $sql . $columns;
     }
 
     /**
