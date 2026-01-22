@@ -13,9 +13,6 @@ use RuntimeException;
 
 class MySqlGrammarEncrypt extends MySqlGrammar
 {
-    protected $columnsEncrypt = [];
-    protected ?Builder $currentQuery = null;
-
     /* ------------------------------------------------------------
      | Helpers
      |------------------------------------------------------------ */
@@ -205,6 +202,270 @@ class MySqlGrammarEncrypt extends MySqlGrammar
 
             return $this->wrap($columnName) . ' = ' . $parameter;
         })->implode(', ');
+    }
+
+    /**
+     * Compile a basic where clause.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    protected function whereBasic(Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        $value = $this->parameter($where['value']);
+
+        $operator = str_replace('?', '??', $where['operator']);
+
+        return $this->wrap($where['column'], $encryptableColumns) . ' ' . $operator . ' ' . $value;
+    }
+
+    /**
+     * Compile a "where in" clause.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    protected function whereIn(Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        if (!empty($where['values'])) {
+            return $this->wrap($where['column'], $encryptableColumns) . ' in (' . $this->parameterize($where['values']) . ')';
+        }
+
+        return '0 = 1';
+    }
+
+    /**
+     * Compile a "where not in" clause.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    protected function whereNotIn(Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        if (!empty($where['values'])) {
+            return $this->wrap($where['column'], $encryptableColumns) . ' not in (' . $this->parameterize($where['values']) . ')';
+        }
+
+        return '1 = 1';
+    }
+
+    /**
+     * Compile a "where not in raw" clause.
+     *
+     * For safety, whereIntegerInRaw ensures this method is only used with integer values.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    protected function whereNotInRaw(Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        if (!empty($where['values'])) {
+            return $this->wrap($where['column'], $encryptableColumns) . ' not in (' . implode(', ', $where['values']) . ')';
+        }
+
+        return '1 = 1';
+    }
+
+    /**
+     * Compile a "where in raw" clause.
+     *
+     * For safety, whereIntegerInRaw ensures this method is only used with integer values.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    protected function whereInRaw(Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        if (!empty($where['values'])) {
+            return $this->wrap($where['column'], $encryptableColumns) . ' in (' . implode(', ', $where['values']) . ')';
+        }
+
+        return '0 = 1';
+    }
+
+    /**
+     * Compile a "between" where clause.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    protected function whereBetween(Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        $between = $where['not'] ? 'not between' : 'between';
+
+        $min = $this->parameter(is_array($where['values']) ? reset($where['values']) : $where['values'][0]);
+
+        $max = $this->parameter(is_array($where['values']) ? end($where['values']) : $where['values'][1]);
+
+        return $this->wrap($where['column'], $encryptableColumns) . ' ' . $between . ' ' . $min . ' and ' . $max;
+    }
+
+    /**
+     * Compile a "between" where clause.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    protected function whereBetweenColumns(Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        $between = $where['not'] ? 'not between' : 'between';
+
+        $min = $this->wrap((is_array($where['values']) ? reset($where['values']) : $where['values'][0]), $encryptableColumns);
+
+        $max = $this->wrap((is_array($where['values']) ? end($where['values']) : $where['values'][1]), $encryptableColumns);
+
+        return $this->wrap($where['column'], $encryptableColumns) . ' ' . $between . ' ' . $min . ' and ' . $max;
+    }
+
+    /**
+     * Compile a date based where clause.
+     *
+     * @param string $type
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    protected function dateBasedWhere($type, Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        $value = $this->parameter($where['value']);
+
+        return $type . '(' . $this->wrap($where['column'], $encryptableColumns) . ') ' . $where['operator'] . ' ' . $value;
+    }
+
+    /**
+     * Compile a where clause comparing two columns.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    protected function whereColumn(Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        return $this->wrap($where['first'], $encryptableColumns) . ' ' . $where['operator'] . ' ' . $this->wrap($where['second'], $encryptableColumns);
+    }
+
+    /**
+     * Compile a where row values condition.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    protected function whereRowValues(Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        $columns = $this->columnize($where['columns'], $encryptableColumns, false);
+
+        $values = $this->parameterize($where['values']);
+
+        return '(' . $columns . ') ' . $where['operator'] . ' (' . $values . ')';
+    }
+
+    /**
+     * Compile a "where fulltext" clause.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $where
+     *
+     * @return string
+     */
+    public function whereFullText(Builder $query, $where)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        $columns = $this->columnize($where['columns'], $encryptableColumns, false);
+
+        $value = $this->parameter($where['value']);
+
+        $mode = ($where['options']['mode'] ?? []) === 'boolean'
+            ? ' in boolean mode'
+            : ' in natural language mode';
+
+        $expanded = ($where['options']['expanded'] ?? []) && ($where['options']['mode'] ?? []) !== 'boolean'
+            ? ' with query expansion'
+            : '';
+
+        return "match ({$columns}) against (" . $value . "{$mode}{$expanded})";
     }
 
     /**
