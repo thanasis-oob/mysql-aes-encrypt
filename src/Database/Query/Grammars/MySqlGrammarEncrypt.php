@@ -130,6 +130,52 @@ class MySqlGrammarEncrypt extends MySqlGrammar
 
         return "insert into $table ($columns) values $parameters";
     }
+
+    /**
+     * Compile an aggregated select clause.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $aggregate
+     *
+     * @return string
+     */
+    protected function compileAggregate(Builder $query, $aggregate)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+//        $encryptableColumns = $query->getEncryptable();
+        // usually the aggregate column is * or a column nad combination of * and a specific column
+        // so, we check if the first column is * to skip encryption
+        if(str_contains(Arr::get($aggregate['columns'], 0), '*')) {
+            // if aggregate columns is '*', we should not append the encryptable columns
+            $column = $this->columnize($aggregate['columns'], [], false);
+        } else {
+            $column = $this->columnize($aggregate['columns'], $encryptableColumns, false);
+        }
+
+        // If the query has a "distinct" constraint, and we're not asking for all columns
+        // we need to prepend "distinct" onto the column name so that the query takes
+        // it into account when it performs the aggregating operations on the data.
+        if (is_array($query->distinct)) {
+            $column = 'distinct ' . $this->columnize($query->distinct, $encryptableColumns);
+        } elseif ($query->distinct && $column !== '*') {
+            $column = 'distinct ' . $column;
+        }
+
+        return 'select ' . $aggregate['function'] . '(' . $column . ') as aggregate';
+    }
+
+    /**
+     * Compile the "select *" portion of the query.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $columns
+     *
+     * @return string|null
+     */
     protected function compileColumns(Builder $query, $columns)
     {
         if (!$this->isEncryptableBuilder($query)) {
