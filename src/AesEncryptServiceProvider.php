@@ -34,7 +34,7 @@ class AesEncryptServiceProvider extends ServiceProvider
             $useIv = config('aesEncrypt.use_iv');
             AesConfig::set($key, $aesMode, $useIv);
 
-            if (!empty($mode)) {
+            if (!empty($aesMode)) {
                 $connection->statement('SET @@SESSION.block_encryption_mode = ?', [$aesMode]);
             }
 
