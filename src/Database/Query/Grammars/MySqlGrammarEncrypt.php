@@ -176,6 +176,205 @@ class MySqlGrammarEncrypt extends MySqlGrammar
     }
 
     /**
+     * Compile the "group by" portions of the query.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $groups
+     *
+     * @return string
+     */
+    protected function compileGroups(Builder $query, $groups)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        return 'group by ' . $this->columnize($groups, $encryptableColumns, false);
+    }
+
+    /**
+     * Compile the "having" portions of the query.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     *
+     * @return string
+     */
+    protected function compileHavings(Builder $query)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        return 'having ' . $this->removeLeadingBoolean((new Collection($query->havings))->map(function ($having) use ($encryptableColumns) {
+                return $having['boolean'] . ' ' . $this->compileHaving($having, $encryptableColumns);
+            })->implode(' '));
+    }
+
+    /**
+     * Compile a single having clause.
+     *
+     * @param array $having
+     * @param array $encryptableColumns
+     *
+     * @return string
+     */
+    protected function compileHaving(array $having, array $encryptableColumns = [])
+    {
+        // If the having clause is "raw", we can just return the clause straight away
+        // without doing any more processing on it. Otherwise, we will compile the
+        // clause into SQL based on the components that make it up from builder.
+        return match ($having['type']) {
+            'Raw' => $having['sql'],
+            'between' => $this->compileHavingBetween($having, $encryptableColumns),
+            'Null' => $this->compileHavingNull($having, $encryptableColumns),
+            'NotNull' => $this->compileHavingNotNull($having, $encryptableColumns),
+            'bit' => $this->compileHavingBit($having, $encryptableColumns),
+            'Expression' => $this->compileHavingExpression($having, $encryptableColumns),
+            'Nested' => $this->compileNestedHavings($having, $encryptableColumns),
+            default => $this->compileBasicHaving($having, $encryptableColumns),
+        };
+    }
+
+    /**
+     * Compile a basic having clause.
+     *
+     * @param array $having
+     * @param array $encryptableColumns
+     *
+     * @return string
+     */
+    protected function compileBasicHaving($having, array $encryptableColumns = [])
+    {
+        $column = $this->wrap($having['column'], $encryptableColumns);
+
+        $parameter = $this->parameter($having['value']);
+
+        return $column . ' ' . $having['operator'] . ' ' . $parameter;
+    }
+
+    /**
+     * Compile a "between" having clause.
+     *
+     * @param array $having
+     * @param array $encryptableColumns
+     *
+     * @return string
+     */
+    protected function compileHavingBetween($having, array $encryptableColumns = [])
+    {
+        $between = $having['not'] ? 'not between' : 'between';
+
+        $column = $this->wrap($having['column'], $encryptableColumns);
+
+        $min = $this->parameter(head($having['values']));
+
+        $max = $this->parameter(last($having['values']));
+
+        return $column . ' ' . $between . ' ' . $min . ' and ' . $max;
+    }
+
+    /**
+     * Compile a having clause involving a bit operator.
+     *
+     * @param array $having
+     * @param array $encryptableColumns
+     *
+     * @return string
+     */
+    protected function compileHavingBit($having, array $encryptableColumns = [])
+    {
+        $column = $this->wrap($having['column'], $encryptableColumns);
+
+        $parameter = $this->parameter($having['value']);
+
+        return '(' . $column . ' ' . $having['operator'] . ' ' . $parameter . ') != 0';
+    }
+
+    /**
+     * Compile the query orders to an array.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $orders
+     *
+     * @return array
+     */
+    protected function compileOrdersToArray(Builder $query, $orders)
+    {
+        if (!$this->isEncryptableBuilder($query)) {
+            return parent::{__FUNCTION__}(...func_get_args());
+        }
+        /** @var BuilderEncrypt $query */
+        $encryptableColumns = $query->getEncryptable();
+
+        return array_map(function ($order) use ($encryptableColumns) {
+            return $order['sql'] ?? $this->wrap($order['column'], $encryptableColumns) . ' ' . $order['direction'];
+        }, $orders);
+    }
+
+    /**
+     * Compile a group limit clause.
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     *
+     * @return string
+     */
+    protected function compileGroupLimit(Builder $query)
+    {
+        throw new RuntimeException('groupLimit() is not implemented.');
+
+//        if (!$this->isEncryptableBuilder($query)) {
+//            return parent::{__FUNCTION__}(...func_get_args());
+//        }
+//        /** @var BuilderEncrypt $query */
+//        $encryptableColumns = $query->getEncryptable();
+//
+//        if ($this->useLegacyGroupLimit($query)) {
+//            return $this->compileLegacyGroupLimit($query);
+//        }
+//
+//        $selectBindings = array_merge($query->getRawBindings()['select'], $query->getRawBindings()['order']);
+//
+//        $query->setBindings($selectBindings, 'select');
+//        $query->setBindings([], 'order');
+//
+//        $limit = (int) $query->groupLimit['value'];
+//        $offset = $query->offset;
+//
+//        if (isset($offset)) {
+//            $offset = (int) $offset;
+//            $limit += $offset;
+//
+//            $query->offset = null;
+//        }
+//
+//        $components = $this->compileComponents($query);
+//
+//        $components['columns'] .= $this->compileRowNumber(
+//            $query->groupLimit['column'],
+//            $components['orders'] ?? ''
+//        );
+//
+//        unset($components['orders']);
+//
+//        $table = $this->wrap('laravel_table');
+//        $row = $this->wrap('laravel_row');
+//
+//        $sql = $this->concatenate($components);
+//
+//        $sql = 'select * from ('.$sql.') as '.$table.' where '.$row.' <= '.$limit;
+//
+//        if (isset($offset)) {
+//            $sql .= ' and '.$row.' > '.$offset;
+//        }
+//
+//        return $sql.' order by '.$row;
+    }
+
+    /**
      * Compile the "select *" portion of the query.
      *
      * @param \Illuminate\Database\Query\Builder $query
