@@ -867,26 +867,6 @@ class MySqlGrammarEncrypt extends MySqlGrammar
     {
         $segments = preg_split('/\s+as\s+/i', $value);
 
-        return $this->wrap($segments[0], $encryptable) . ' as ' . $this->wrapValue($segments[1]);
-    }
-
-    /**
-     * Split the given JSON selector into the field and the optional path and wrap them separately.
-     *
-     * @param string $column
-     * @param array $encryptable
-     *
-     * @return array
-     */
-    protected function wrapJsonFieldAndPath($column, array $encryptable = [])
-    {
-        $parts = explode('->', $column, 2);
-
-        $field = $this->wrap($parts[0], $encryptable);
-
-        $path = count($parts) > 1 ? ', ' . $this->wrapJsonPath($parts[1], '->') : '';
-
-        return [$field, $path];
         return $this->wrap($segments[0], $encryptableColumns) . ' as ' . $this->wrapValue($segments[1]);
     }
 
