@@ -83,6 +83,13 @@ class MySqlGrammarEncrypt extends MySqlGrammar
         return Str::lower(Arr::last(explode('.', $column)));
     }
 
+    /**
+     * Create the decrypted column mysql expression.
+     *
+     * @param string $column
+     *
+     * @return string
+     */
     protected function decryptColumn(string $column): string
     {
         return EncryptExpressions::decrypt($column);
@@ -99,11 +106,11 @@ class MySqlGrammarEncrypt extends MySqlGrammar
     public function compileInsert(Builder $query, array $values)
     {
         if (empty($values) || !$this->isEncryptableBuilder($query)) {
-            return parent::compileInsert($query, $values);
+            return parent::{__FUNCTION__}(...func_get_args());
         }
 
         /** @var BuilderEncrypt $query */
-        $encryptedColumns = $query->getEncryptable();
+        $encryptableColumns = $query->getEncryptable();
 
         // Essentially we will force every insert to be treated as a batch insert which
         // simply makes creating the SQL easier for us since we can utilize the same
@@ -118,14 +125,14 @@ class MySqlGrammarEncrypt extends MySqlGrammar
             $values = [$values];
         }
 
-        //should not encrpyt/decrypt insert column names
+        //should not encrypt/decrypt insert column names
         $columns = $this->columnize(array_keys(reset($values)));
 
         // We need to build a list of parameter place-holders of values that are bound
         // to the query. Each insert should have the exact same number of parameter
         // bindings so we will loop through the record and parameterize them all.
-        $parameters = (new Collection($values))->map(function ($record) use ($encryptedColumns) {
-            return '(' . $this->parameterize($record, $encryptedColumns) . ')';
+        $parameters = (new Collection($values))->map(function ($record) use ($encryptableColumns) {
+            return '(' . $this->parameterize($record, $encryptableColumns) . ')';
         })->implode(', ');
 
         return "insert into $table ($columns) values $parameters";
@@ -179,10 +186,10 @@ class MySqlGrammarEncrypt extends MySqlGrammar
     protected function compileColumns(Builder $query, $columns)
     {
         if (!$this->isEncryptableBuilder($query)) {
-            return parent::compileColumns($query, $columns);
+            return parent::{__FUNCTION__}(...func_get_args());
         }
         /** @var BuilderEncrypt $query */
-        $encryptedColumns = $query->getEncryptable();
+        $encryptableColumns = $query->getEncryptable();
 
         // If the query is actually performing an aggregating select, we will let that
         // compiler handle the building of the select clauses, as it will need some
@@ -197,7 +204,7 @@ class MySqlGrammarEncrypt extends MySqlGrammar
             $select = 'select ';
         }
 
-        return $select . $this->columnize($columns, $encryptedColumns);
+        return $select . $this->columnize($columns, $encryptableColumns);
     }
 
     /**
@@ -617,13 +624,13 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      * Wrap a value in keyword identifiers.
      *
      * @param Expression|string $value
-     * @param array $encryptable
+     * @param array $encryptableColumns
      *
      * @return string
      */
-    public function wrap($value, array $encryptable = [])
+    public function wrap($value, array $encryptableColumns = [])
     {
-        if (empty($encryptable)) {
+        if (empty($encryptableColumns)) {
             return parent::wrap($value);
         }
 
@@ -635,7 +642,7 @@ class MySqlGrammarEncrypt extends MySqlGrammar
         // the pieces so we can wrap each of the segments of the expression on its
         // own, and then join these both back together using the "as" connector.
         if (stripos($value, ' as ') !== false) {
-            return $this->wrapAliasedValue($value, $encryptable);
+            return $this->wrapAliasedValue($value, $encryptableColumns);
         }
 
         // If the given value is a JSON selector we will wrap it differently than a
@@ -646,19 +653,18 @@ class MySqlGrammarEncrypt extends MySqlGrammar
             return $this->wrapJsonSelector($value);
         }
 
-        return $this->wrapSegments(explode('.', $value), $encryptable);
+        return $this->wrapSegments(explode('.', $value), $encryptableColumns);
     }
-
 
     /**
      * Wrap a value that has an alias.
      *
      * @param string $value
-     * @param array $encryptable
+     * @param array $encryptableColumns
      *
      * @return string
      */
-    protected function wrapAliasedValue($value, array $encryptable = [])
+    protected function wrapAliasedValue($value, array $encryptableColumns = [])
     {
         $segments = preg_split('/\s+as\s+/i', $value);
 
@@ -682,6 +688,7 @@ class MySqlGrammarEncrypt extends MySqlGrammar
         $path = count($parts) > 1 ? ', ' . $this->wrapJsonPath($parts[1], '->') : '';
 
         return [$field, $path];
+        return $this->wrap($segments[0], $encryptableColumns) . ' as ' . $this->wrapValue($segments[1]);
     }
 
     /**
