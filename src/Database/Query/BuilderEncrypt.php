@@ -39,13 +39,4 @@ class BuilderEncrypt extends BaseBuilder
     {
         return $this->encryptable;
     }
-
-    /**
-     * Convenience check.
-     */
-    public function isEncryptableColumn(string $column): bool
-    {
-        $base = str_contains($column, '.') ? last(explode('.', $column)) : $column;
-        return in_array($base, $this->encryptable, true);
-    }
 }
