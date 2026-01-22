@@ -1,8 +1,8 @@
 <?php
 
-namespace mrzainulabideen\AESEncrypt\Database\Eloquent\Concerns;
+namespace Thanous\AESEncrypt\Database\Eloquent\Concerns;
 
-use mrzainulabideen\AESEncrypt\Database\Query\BuilderEncrypt;
+use Thanous\AESEncrypt\Database\Query\BuilderEncrypt;
 
 trait EncryptableModel
 {

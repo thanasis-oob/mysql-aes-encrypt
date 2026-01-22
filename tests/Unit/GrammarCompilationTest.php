@@ -1,9 +1,9 @@
 <?php
 
-namespace mrzainulabideen\AESEncrypt\Tests\Unit;
+namespace Thanous\AESEncrypt\Tests\Unit;
 
-use mrzainulabideen\AESEncrypt\AesConfig;
-use mrzainulabideen\AESEncrypt\Tests\TestCase;
+use Thanous\AESEncrypt\AesConfig;
+use Thanous\AESEncrypt\Tests\TestCase;
 
 class GrammarCompilationTest extends TestCase
 {

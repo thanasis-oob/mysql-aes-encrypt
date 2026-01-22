@@ -1,6 +1,6 @@
 <?php
 
-namespace mrzainulabideen\AESEncrypt\Database\Query\Grammars;
+namespace Thanous\AESEncrypt\Database\Query\Grammars;
 
 use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Query\Builder;
@@ -8,7 +8,7 @@ use Illuminate\Database\Query\Grammars\MySqlGrammar;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
-use mrzainulabideen\AESEncrypt\Database\Query\BuilderEncrypt;
+use Thanous\AESEncrypt\Database\Query\BuilderEncrypt;
 use RuntimeException;
 
 class MySqlGrammarEncrypt extends MySqlGrammar

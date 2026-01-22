@@ -1,6 +1,6 @@
 <?php
 
-namespace mrzainulabideen\AESEncrypt\Database\Query;
+namespace Thanous\AESEncrypt\Database\Query;
 
 use Illuminate\Database\Query\Builder as BaseBuilder;
 

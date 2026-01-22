@@ -1,8 +1,8 @@
 <?php
 
-namespace mrzainulabideen\AESEncrypt\Database\Query\Grammars;
+namespace Thanous\AESEncrypt\Database\Query\Grammars;
 
-use mrzainulabideen\AESEncrypt\AesConfig;
+use Thanous\AESEncrypt\AesConfig;
 
 class EncryptExpressions
 {

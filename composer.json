@@ -1,5 +1,5 @@
 {
-    "name": "thanasis-oob/mysql-aes-encrypt",
+    "name": "thanous/mysql-aes-encrypt",
     "type": "library",
     "description": "Laravel MySql AES Encrypt/Decrypt",
     "keywords": ["laravel","mysql", "aes", "encrypt"],
@@ -22,18 +22,18 @@
     },
     "autoload": {
         "psr-4": {
-            "mrzainulabideen\\AESEncrypt\\": "src"
+            "Thanous\\AESEncrypt\\": "src"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "mrzainulabideen\\AESEncrypt\\Tests\\": "tests/"
+            "Thanous\\AESEncrypt\\Tests\\": "tests/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "mrzainulabideen\\AESEncrypt\\AesEncryptServiceProvider"
+                "Thanous\\AESEncrypt\\AesEncryptServiceProvider"
             ]
         }
     },

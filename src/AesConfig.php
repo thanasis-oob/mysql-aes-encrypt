@@ -1,6 +1,6 @@
 <?php
 
-namespace mrzainulabideen\AESEncrypt;
+namespace Thanous\AESEncrypt;
 
 final class AesConfig
 {

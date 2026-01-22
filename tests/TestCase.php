@@ -1,6 +1,6 @@
 <?php
 
-namespace mrzainulabideen\AESEncrypt\Tests;
+namespace Thanous\AESEncrypt\Tests;
 
 use Illuminate\Database\Connection;
 use Illuminate\Database\Connectors\SQLiteConnector;
@@ -8,9 +8,9 @@ use Illuminate\Database\Query\Processors\MySqlProcessor;
 use Illuminate\Database\SQLiteConnection;
 use Illuminate\Support\Facades\DB;
 use Orchestra\Testbench\TestCase as Orchestra;
-use mrzainulabideen\AESEncrypt\Database\Query\Grammars\MySqlGrammarEncrypt;
-use mrzainulabideen\AESEncrypt\Database\Query\BuilderEncrypt;
-use mrzainulabideen\AESEncrypt\AesConfig;
+use Thanous\AESEncrypt\Database\Query\Grammars\MySqlGrammarEncrypt;
+use Thanous\AESEncrypt\Database\Query\BuilderEncrypt;
+use Thanous\AESEncrypt\AesConfig;
 
 abstract class TestCase extends Orchestra
 {

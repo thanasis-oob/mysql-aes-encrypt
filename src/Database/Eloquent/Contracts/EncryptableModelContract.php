@@ -1,6 +1,6 @@
 <?php
 
-namespace mrzainulabideen\AESEncrypt\Database\Eloquent\Contracts;
+namespace Thanous\AESEncrypt\Database\Eloquent\Contracts;
 
 interface EncryptableModelContract
 {

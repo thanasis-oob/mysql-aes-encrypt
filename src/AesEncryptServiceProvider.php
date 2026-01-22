@@ -1,11 +1,11 @@
 <?php
 
-namespace mrzainulabideen\AESEncrypt;
+namespace Thanous\AESEncrypt;
 
 use Illuminate\Database\Events\ConnectionEstablished;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
-use mrzainulabideen\AESEncrypt\Database\Query\Grammars\MySqlGrammarEncrypt;
+use Thanous\AESEncrypt\Database\Query\Grammars\MySqlGrammarEncrypt;
 
 class AesEncryptServiceProvider extends ServiceProvider
 {
