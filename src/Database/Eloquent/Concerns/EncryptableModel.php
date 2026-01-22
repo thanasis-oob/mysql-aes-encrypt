@@ -2,7 +2,6 @@
 
 namespace mrzainulabideen\AESEncrypt\Database\Eloquent\Concerns;
 
-use mrzainulabideen\AESEncrypt\Contracts\EncryptableModelContract;
 use mrzainulabideen\AESEncrypt\Database\Query\BuilderEncrypt;
 
 trait EncryptableModel

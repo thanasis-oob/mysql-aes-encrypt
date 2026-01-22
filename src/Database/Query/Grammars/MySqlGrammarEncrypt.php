@@ -5,11 +5,11 @@ namespace mrzainulabideen\AESEncrypt\Database\Query\Grammars;
 use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\Grammars\MySqlGrammar;
-use Illuminate\Database\Query\JoinLateralClause;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
-use mrzainulabideen\AESEncrypt\Database\Query\BuilderEncrypt;
 use Illuminate\Support\Str;
+use mrzainulabideen\AESEncrypt\Database\Query\BuilderEncrypt;
+use RuntimeException;
 
 class MySqlGrammarEncrypt extends MySqlGrammar
 {

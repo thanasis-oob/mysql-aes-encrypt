@@ -11,7 +11,7 @@ final class AesConfig
     public static function set(string $key, ?string $aesMode, bool $useIv): void
     {
         self::$key = $key;
-        self::$aesMode = $key;
+        self::$aesMode = $aesMode;
         self::$useIv = $useIv;
     }
 
