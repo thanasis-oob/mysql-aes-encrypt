@@ -9,9 +9,8 @@ trait EncryptableModel
 {
     public function getEncryptableAttributes(): array
     {
-        // Default: read from $fillableEncrypt property if present
-        return property_exists($this, 'fillableEncrypt')
-            ? array_values((array) $this->fillableEncrypt)
+        return property_exists($this, 'encryptable')
+            ? array_values((array) $this->encryptable)
             : [];
     }
 
