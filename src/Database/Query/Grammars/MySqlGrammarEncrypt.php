@@ -211,19 +211,18 @@ class MySqlGrammarEncrypt extends MySqlGrammar
     protected function compileUpdateColumns(Builder $query, array $values)
     {
         if (!$this->isEncryptableBuilder($query)) {
-            return parent::compileUpdateColumns($query, $values);
+            return parent::{__FUNCTION__}(...func_get_args());
         }
         /** @var BuilderEncrypt $query */
-        $encryptedColumns = $query->getEncryptable();
+        $encryptableColumns = $query->getEncryptable();
 
-        return (new Collection($values))->map(function ($value, $columnName) use ($encryptedColumns) {
+        return (new Collection($values))->map(function ($value, $columnName) use ($encryptableColumns) {
             if ($this->isJsonSelector($columnName)) {
-                return $this->compileJsonUpdateColumn($columnName, $value, $encryptedColumns);
+                return $this->compileJsonUpdateColumn($columnName, $value);
             }
 
-            $unqualifiedColumnName = $this->toUnqualifiedColumn($columnName);
             $parameter = $this->parameter($value);
-            if (!empty($encryptedColumns) && in_array($unqualifiedColumnName, $encryptedColumns, true)) {
+            if (!is_null($value) && $this->isEncryptableColumn($columnName, $encryptableColumns)) {
                 $parameter = EncryptExpressions::encrypt($parameter);
             }
 
@@ -545,38 +544,30 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      * Convert an array of column names into a delimited string.
      *
      * @param array $columns
-     * @param array $encryptable
+     * @param array $encryptableColumns
+     * @param bool $forceAlias
      *
      * @return string
      */
-    public function columnize(array $columns, array $encryptable = [])
+    public function columnize(array $columns, array $encryptableColumns = [], bool $forceAlias = true)
     {
         $columnizeColumns = [];
 
-        $columns = $this->addColumnsToWildcard($columns, $encryptable);
-
+        $columns = $this->addColumnsToWildcard($columns, $encryptableColumns);
 
         foreach ($columns as $column) {
-//            dump($column);
-            $unqualifiedColumnName = $this->toUnqualifiedColumn($column);
-            $wrappedColumn = $this->wrap($column, $encryptable);
-//            dump($wrappedColumn);
+            $wrappedColumn = $this->wrap($column, $encryptableColumns);
 
-            if (true
-                && in_array($unqualifiedColumnName, $encryptable)
-                && strpos(strtolower($wrappedColumn), ' as ') === false
-                && strpos(strtolower($wrappedColumn), '*') === false) {
+            if ($forceAlias
+                && $this->isEncryptableColumn($column, $encryptableColumns)
+                && str_contains(strtolower($wrappedColumn), ' as ') === false
+                && str_contains($wrappedColumn, '*') === false) {
                 preg_match_all("/\`.*?\`/", $wrappedColumn, $alias);
                 $wrappedColumn = $wrappedColumn . ' as ' . Arr::last($alias[0]);
-//                dump($alias);
-//                dump(Arr::last($alias[0]));
-//                dd($wrappedColumn);
             }
 
             $columnizeColumns[] = $wrappedColumn;
         }
-
-//        dd($columnizeColumns);
 
         return implode(', ', $columnizeColumns);
     }
@@ -585,15 +576,21 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      * if columns only contain a wildcard we add the encrypted columns to decrypt
      *
      * @param array $columns
-     * @param array $columnsEncrypt
+     * @param array $encryptableColumns
      *
      * @return array
      */
-    public function addColumnsToWildcard(array $columns, array $columnsEncrypt)
+    public function addColumnsToWildcard(array $columns, array $encryptableColumns): array
     {
-        if (!empty($columns) && strpos(strtolower($columns[0]), '*') !== false) {
-            $columns = array_merge($columns, $columnsEncrypt);
+        $unqualifiedColumns = collect($columns)->map(fn($column) => $this->toUnqualifiedColumn($column, $encryptableColumns))->toArray();
+
+        $hasWildcard = collect($columns)
+            ->contains(fn ($column) => str_contains($column, '*'));
+
+        if ($hasWildcard) {
+            $columns = array_merge($columns, array_diff($encryptableColumns, $unqualifiedColumns));
         }
+
         return $columns;
     }
 
@@ -601,15 +598,15 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      * Create query parameter place-holders for an array.
      *
      * @param array $values
-     * @param array $encryptable
+     * @param array $encryptableColumns
      *
      * @return string
      */
-    public function parameterize(array $values, array $encryptable = [])
+    public function parameterize(array $values, array $encryptableColumns = [])
     {
-        return (new Collection($values))->map(function ($columnValue, $columnName) use ($encryptable) {
+        return (new Collection($values))->map(function ($columnValue, $columnName) use ($encryptableColumns) {
             $parameter = $this->parameter($columnName);
-            if (!empty($encryptable) && in_array($columnName, $encryptable, true)) {
+            if (!is_null($columnValue) && !empty($encryptableColumns) && $this->isEncryptableColumn($columnName, $encryptableColumns)) {
                 $parameter = EncryptExpressions::encrypt($parameter);
             }
             return $parameter;
@@ -691,11 +688,11 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      * Wrap the given value segments.
      *
      * @param $segments
-     * @param array $encryptable
+     * @param array $encryptableColumns
      *
      * @return string
      */
-    protected function wrapSegments($segments, array $encryptable = [])
+    protected function wrapSegments($segments, array $encryptableColumns = [])
     {
         $wrapped = (new Collection($segments))->map(function ($segment, $key) use ($segments) {
             return $key == 0 && count($segments) > 1
@@ -703,24 +700,24 @@ class MySqlGrammarEncrypt extends MySqlGrammar
                 : $this->wrapValue($segment);
         })->implode('.');
 
-        return in_array(strtolower(Arr::last($segments)), $encryptable, true)
-            ? $this->decryptColumn($wrapped, $encryptable)
+        return $this->isEncryptableColumn(Arr::last($segments), $encryptableColumns)
+            ? $this->decryptColumn($wrapped)
             : $wrapped;
     }
 
     /**
      * @param $value
-     * @param array $encryptable
+     * @param array $encryptableColumns
      *
      * @return string
      */
-    protected function wrapValue($value, array $encryptable = [])
+    protected function wrapValue($value, array $encryptableColumns = [])
     {
         if ($value === '*') {
             return $value;
         }
         $wrapped = '`' . str_replace('`', '``', $value) . '`';
-        if (in_array($value, $encryptable)) {
+        if ($this->isEncryptableColumn($value, $encryptableColumns)) {
             return $this->decryptColumn($wrapped);
         }
 
