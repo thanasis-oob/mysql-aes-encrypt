@@ -74,8 +74,13 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      *
      * @return string
      */
-    protected function toUnqualifiedColumn(string $column): string
+    protected function toUnqualifiedColumn($column)
     {
+        //split alias
+        if ($this->isExpression($column)) {
+            return $column;
+        }
+
         //split alias
         if($this->isAliasedColumn($column)) {
             $column = $this->removeColumnAlias($column);
@@ -788,10 +793,14 @@ class MySqlGrammarEncrypt extends MySqlGrammar
      */
     public function addColumnsToWildcard(array $columns, array $encryptableColumns): array
     {
-        $unqualifiedColumns = collect($columns)->map(fn($column) => $this->toUnqualifiedColumn($column, $encryptableColumns))->toArray();
+        //extract the unqualified columns names excluding Expression columns
+        $unqualifiedColumns = collect($columns)
+            ->filter(fn($column) => is_string($column))
+            ->map(fn($column) => $this->toUnqualifiedColumn($column, $encryptableColumns))
+            ->toArray();
 
-        $hasWildcard = collect($columns)
-            ->contains(fn ($column) => str_contains($column, '*'));
+        $hasWildcard = collect($unqualifiedColumns)
+            ->contains(fn ($column) => (is_string($column) && str_contains($column, '*')));
 
         if ($hasWildcard) {
             $columns = array_merge($columns, array_diff($encryptableColumns, $unqualifiedColumns));
