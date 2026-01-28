@@ -25,9 +25,9 @@ final class AesConnectionManagerTest extends TestCase
 
         $conn->method('selectOne')->willReturnCallback(function (string $sql) use ($effectiveBem) {
             if ($sql === 'SELECT @@SESSION.block_encryption_mode AS bem') {
-                return (object) ['bem' => $effectiveBem];
+                return (object)['bem' => $effectiveBem];
             }
-            return (object) [];
+            return (object)[];
         });
 
         $conn->method('statement')->willReturnCallback(function (string $sql, array $bindings = []) use (&$statements) {
@@ -154,4 +154,70 @@ final class AesConnectionManagerTest extends TestCase
         $m256 = new AesConnectionManager($conn256);
         $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $m256->generateNormalizeAesKeyHex('passphrase'));
     }
+
+    #[Test]
+    public function it_normalizes_key_and_uses_unhex_when_normalization_is_enabled(): void
+    {
+        $this->app['config']->set('aesEncrypt.key', 'plain-secret');
+        $this->app['config']->set('aesEncrypt.mode', 'aes-256-cbc');
+        $this->app['config']->set('aesEncrypt.use_iv', false);
+        $this->app['config']->set('aesEncrypt.normalize_key_length', true);
+
+        $statements = [];
+        $conn = $this->makeConnectionMock('mysql', 'aes-256-cbc', $statements);
+
+        (new AesConnectionManager($conn))->setupConnection();
+
+        // Expect: SET MODE + SET @AESKEY = UNHEX(?)
+        $this->assertCount(2, $statements);
+
+        [$sql, $bindings] = $statements[1];
+        $this->assertSame('SET @AESKEY = UNHEX(?)', $sql);
+        $this->assertCount(1, $bindings);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $bindings[0]);
+    }
+
+    #[Test]
+    public function it_sets_plain_key_when_normalization_is_disabled(): void
+    {
+        $this->app['config']->set('aesEncrypt.key', 'plain-secret');
+        $this->app['config']->set('aesEncrypt.mode', 'aes-256-cbc');
+        $this->app['config']->set('aesEncrypt.use_iv', false);
+        $this->app['config']->set('aesEncrypt.normalize_key_length', false);
+
+        $statements = [];
+        $conn = $this->makeConnectionMock('mysql', 'aes-256-cbc', $statements);
+
+        (new AesConnectionManager($conn))->setupConnection();
+
+        // Expect: SET MODE + SET @AESKEY = ?
+        $this->assertCount(2, $statements);
+
+        [$sql, $bindings] = $statements[1];
+        $this->assertSame('SET @AESKEY = ?', $sql);
+        $this->assertSame(['plain-secret'], $bindings);
+    }
+
+    #[Test]
+    public function it_falls_back_to_plain_key_when_mode_is_null_even_if_normalization_enabled(): void
+    {
+        $this->app['config']->set('aesEncrypt.key', 'plain-secret');
+        $this->app['config']->set('aesEncrypt.mode', null);
+        $this->app['config']->set('aesEncrypt.use_iv', false);
+        $this->app['config']->set('aesEncrypt.normalize_key_length', true);
+
+        $statements = [];
+        $conn = $this->makeConnectionMock('mysql', null, $statements);
+
+        (new AesConnectionManager($conn))->setupConnection();
+
+        // Only key should be set (no mode)
+        $this->assertCount(1, $statements);
+
+        [$sql, $bindings] = $statements[0];
+        $this->assertSame('SET @AESKEY = ?', $sql);
+        $this->assertSame(['plain-secret'], $bindings);
+    }
+
+
 }

@@ -2,6 +2,7 @@
 
 namespace Thanous\AESEncrypt;
 
+use Exception;
 use Illuminate\Database\ConnectionInterface;
 use Thanous\AESEncrypt\Database\Query\Grammars\MySqlGrammarEncrypt;
 
@@ -73,11 +74,15 @@ final class AesConnectionManager
             return;
         }
 
-        $keyHex = $this->generateNormalizeAesKeyHex($plainKey);
+        if (AesConfig::shouldNormalizeKeyLength() && $this->extractUsedAesMode() !== null) {
+            $keyHex = $this->generateNormalizeAesKeyHex($plainKey);
 
-        // 4) set @AESKEY as a binary value in the session
-        // Store as binary to avoid encoding/collation issues
-        $this->connection->statement('SET @AESKEY = UNHEX(?)', [$keyHex]);
+            // 4) set @AESKEY as a binary value in the session
+            // Store as binary to avoid encoding/collation issues
+            $this->connection->statement('SET @AESKEY = UNHEX(?)', [$keyHex]);
+        } else {
+            $this->connection->statement('SET @AESKEY = ?', [$plainKey]);
+        }
     }
 
     public function generateNormalizeAesKeyHex(string $plainKey): string
@@ -96,8 +101,12 @@ final class AesConnectionManager
 
     public function extractUsedAesMode(): ?string
     {
-        $row = $this->connection->selectOne('SELECT @@SESSION.block_encryption_mode AS bem');
-        return $row->bem ?? null;
+        try{
+            $row = $this->connection->selectOne('SELECT @@SESSION.block_encryption_mode AS bem');
+            return $row->bem ?? null;
+        } catch (Exception $e) {
+            return null;
+        }
     }
 
     private function detectAesModeAppropriateKeyByteLength(?string $usedAesMode, string $plainKey): int
