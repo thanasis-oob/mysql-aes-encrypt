@@ -13,6 +13,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Whether should normalize key length depends on the encryption algorithm
+    |--------------------------------------------------------------------------
+    | Recommended for production mode.
+    | IMPORTANT: On switching, changes the aes key, so be careful.
+    */
+    'normalize_key_length' => env('MYSQL_AES_NORMALIZE_KEY_LENGTH', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Use AES IV (MySQL only)
     |--------------------------------------------------------------------------
     | If true:

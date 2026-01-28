@@ -5,7 +5,6 @@ namespace Thanous\AESEncrypt;
 use Illuminate\Database\Events\ConnectionEstablished;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
-use Thanous\AESEncrypt\Database\Query\Grammars\MySqlGrammarEncrypt;
 
 class AesEncryptServiceProvider extends ServiceProvider
 {
@@ -24,27 +23,8 @@ class AesEncryptServiceProvider extends ServiceProvider
          */
         Event::listen(ConnectionEstablished::class, function (ConnectionEstablished $event) {
             $connection = $event->connection;
-
-            if ($connection->getDriverName() !== 'mysql') {
-                return;
-            }
-
-            $aesMode = config('aesEncrypt.mode');
-            $key  = config('aesEncrypt.key');
-            $useIv = config('aesEncrypt.use_iv');
-            AesConfig::set($key, $aesMode, $useIv);
-
-            if (!empty($aesMode)) {
-                $connection->statement('SET @@SESSION.block_encryption_mode = ?', [$aesMode]);
-            }
-
-            if (!empty($key)) {
-                // store key in a session variable for use in SQL expressions later
-                $connection->statement('SET @AESKEY = ?', [$key]);
-            }
-
-            // Swap grammar (no behavior change yet, just proving hook works)
-            $connection->setQueryGrammar(new MySqlGrammarEncrypt());
+            $connectionManager = new AesConnectionManager($connection);
+            $connectionManager->setupConnection();
         });
     }
 
