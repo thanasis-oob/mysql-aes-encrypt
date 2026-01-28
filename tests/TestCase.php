@@ -19,7 +19,7 @@ abstract class TestCase extends Orchestra
         parent::setUp();
 
         // Make sure config is deterministic for compilation tests
-        AesConfig::set('test-key', 'aes-256-cbc', false);
+        AesConfig::set('test-key', 'aes-256-cbc', false, true);
     }
 
     /**
