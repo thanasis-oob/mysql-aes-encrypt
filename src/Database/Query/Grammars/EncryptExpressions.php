@@ -22,17 +22,21 @@ class EncryptExpressions
      */
     public static function encrypt(string $sqlValue): string
     {
+        $aesParameters = [
+            'columnValueName' => $sqlValue,
+            'aesKey' => '@AESKEY',
+        ];
+
         if (self::useIv()) {
+            $aesParameters['iv'] = "@iv := RANDOM_BYTES(16)";
+            $aesParametersExpression = implode(', ', $aesParameters);
             // Store: ciphertext + ".iv." + raw IV bytes
-            return "CONCAT(
-                AES_ENCRYPT({$sqlValue}, @AESKEY, @iv := RANDOM_BYTES(16)),
-                '.iv.',
-                @iv
-            )";
+            return "CONCAT(AES_ENCRYPT({$aesParametersExpression}), '.iv.', @iv)";
         }
 
+        $aesParametersExpression = implode(', ', $aesParameters);
         // MariaDB-compatible: no IV argument
-        return "AES_ENCRYPT({$sqlValue}, @AESKEY)";
+        return "AES_ENCRYPT({$aesParametersExpression})";
     }
 
     /**
@@ -50,7 +54,7 @@ class EncryptExpressions
             $aesParameters['columnValueName'] = "SUBSTRING_INDEX({$column}, '.iv.', 1)";
             $aesParameters['iv'] = "SUBSTRING_INDEX({$column}, '.iv.', -1)";
         }
-        $aesParametersExpression = implode(', ', array_filter($aesParameters));
+        $aesParametersExpression = implode(', ', $aesParameters);
         $decryptedColumn = "AES_DECRYPT({$aesParametersExpression})";
 
         return "CONVERT({$decryptedColumn} USING utf8mb4)";
