@@ -41,16 +41,18 @@ class EncryptExpressions
      */
     public static function decrypt(string $column): string
     {
-        if (self::useIv()) {
-            return "CONVERT(
-                AES_DECRYPT(
-                    SUBSTRING_INDEX({$column}, '.iv.', 1),
-                    @AESKEY,
-                    SUBSTRING_INDEX({$column}, '.iv.', -1)
-                ) USING utf8mb4
-            )";
-        }
+        $aesParameters = [
+            'columnValueName' => $column,
+            'aesKey' => '@AESKEY',
+        ];
 
-        return "CONVERT(AES_DECRYPT({$column}, @AESKEY) USING utf8mb4)";
+        if (self::useIv()) {
+            $aesParameters['columnValueName'] = "SUBSTRING_INDEX({$column}, '.iv.', 1)";
+            $aesParameters['iv'] = "SUBSTRING_INDEX({$column}, '.iv.', -1)";
+        }
+        $aesParametersExpression = implode(', ', array_filter($aesParameters));
+        $decryptedColumn = "AES_DECRYPT({$aesParametersExpression})";
+
+        return "CONVERT({$decryptedColumn} USING utf8mb4)";
     }
 }
