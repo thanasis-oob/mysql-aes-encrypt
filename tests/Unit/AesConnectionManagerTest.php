@@ -113,7 +113,7 @@ final class AesConnectionManagerTest extends TestCase
     }
 
     #[Test]
-    public function it_does_not_set_key_when_key_is_empty(): void
+    public function it_skips_when_key_is_empty_and_does_not_swap_grammar_or_set_variables(): void
     {
         $this->app['config']->set('aesEncrypt.key', '');
         $this->app['config']->set('aesEncrypt.mode', 'aes-256-cbc');
@@ -123,18 +123,12 @@ final class AesConnectionManagerTest extends TestCase
         $statements = [];
         $conn = $this->makeConnectionMock('mysql', 'aes-256-cbc', $statements);
 
-        $conn->expects($this->once())
-            ->method('setQueryGrammar')
-            ->with($this->isInstanceOf(MySqlGrammarEncrypt::class));
+        $conn->expects($this->never())->method('setQueryGrammar');
+        $conn->expects($this->never())->method('statement');
 
         (new AesConnectionManager($conn))->setupConnection();
 
-        // Only mode (no key at all)
-        $this->assertCount(1, $statements);
-
-        [$sql, $bind] = $statements[0];
-        $this->assertSame('SET @@SESSION.block_encryption_mode = ?', $sql);
-        $this->assertSame(['aes-256-cbc'], $bind);
+        $this->assertCount(0, $statements);
     }
 
     #[Test]
@@ -217,6 +211,25 @@ final class AesConnectionManagerTest extends TestCase
         [$sql, $bindings] = $statements[0];
         $this->assertSame('SET @AESKEY = ?', $sql);
         $this->assertSame(['plain-secret'], $bindings);
+    }
+
+    #[Test]
+    public function it_skips_when_key_is_null_and_does_not_swap_grammar_or_set_variables(): void
+    {
+        $this->app['config']->set('aesEncrypt.key', null);
+        $this->app['config']->set('aesEncrypt.mode', 'aes-256-cbc');
+        $this->app['config']->set('aesEncrypt.use_iv', false);
+        $this->app['config']->set('aesEncrypt.normalize_key_length', true);
+
+        $statements = [];
+        $conn = $this->makeConnectionMock('mysql', 'aes-256-cbc', $statements);
+
+        $conn->expects($this->never())->method('setQueryGrammar');
+        $conn->expects($this->never())->method('statement');
+
+        (new AesConnectionManager($conn))->setupConnection();
+
+        $this->assertCount(0, $statements);
     }
 
 

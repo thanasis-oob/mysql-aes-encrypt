@@ -6,12 +6,12 @@ use Illuminate\Database\ConnectionInterface;
 
 final class AesConfig
 {
-    private static string $key = '';
+    private static ?string $key = null;
     private static bool $normalizeKeyLength = false;
     private static ?string $aesMode = null;
     private static bool $useIv = false;
 
-    public static function set(string $key, ?string $aesMode, bool $useIv, bool $normalizeKeyLength): void
+    public static function set(?string $key, ?string $aesMode, bool $useIv, bool $normalizeKeyLength): void
     {
         self::$key = $key;
         self::$aesMode = $aesMode;
@@ -26,7 +26,12 @@ final class AesConfig
         ];
     }
 
-    public static function key(): string
+    public static function canApplyEncryptionGrammar(): bool
+    {
+        return !empty(self::$key);
+    }
+
+    public static function key(): ?string
     {
         return self::$key;
     }

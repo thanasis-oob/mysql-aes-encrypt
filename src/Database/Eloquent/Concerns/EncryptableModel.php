@@ -2,6 +2,7 @@
 
 namespace Thanous\AESEncrypt\Database\Eloquent\Concerns;
 
+use Thanous\AESEncrypt\AesConfig;
 use Thanous\AESEncrypt\Database\Query\BuilderEncrypt;
 
 trait EncryptableModel
@@ -15,6 +16,10 @@ trait EncryptableModel
 
     protected function newBaseQueryBuilder()
     {
+        if (!AesConfig::canApplyEncryptionGrammar()) {
+            return parent::newBaseQueryBuilder();
+        }
+
         $connection = $this->getConnection();
 
         $builder = new BuilderEncrypt(

@@ -23,6 +23,11 @@ final class AesConnectionManager
         }
 
         $this->initAesConfig();
+
+        if (!AesConfig::canApplyEncryptionGrammar()) {
+            return;
+        }
+
         $this->defineEncryptionVariables();
 
         // Swap grammar (no behavior change yet, just proving hook works)
@@ -88,7 +93,7 @@ final class AesConnectionManager
     public function generateNormalizeAesKeyHex(string $plainKey): string
     {
         // 1) Read the *effective* session mode (already includes server default if you didn't set it)
-        $usedAesMode = $this->extractUsedAesMode($this->connection);
+        $usedAesMode = $this->extractUsedAesMode();
         // 2) Parse key size from mode string like: "aes-256-cbc"
         $keyByteLength = $this->detectAesModeAppropriateKeyByteLength($usedAesMode, $plainKey);
 

@@ -8,6 +8,7 @@ return [
     |--------------------------------------------------------------------------
     | The secret key used by MySQL AES_ENCRYPT/AES_DECRYPT.
     | Recommended: set via env MYSQL_AES_KEY in your Laravel app.
+    | IMPORTANT: If key is empty the Aes logic does not applied, and it is used the default classes
     */
     'key' => env('MYSQL_AES_KEY'),
 
